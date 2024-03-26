@@ -3,6 +3,7 @@ import random
 
 from data import db_session
 from data.users import User
+from data.rooms import Room
 
 bot = telebot.TeleBot('6262493627:AAGhW1QAWBkE1niyqgvtP-exbu_xBTscqVM')
 
@@ -42,8 +43,43 @@ def set_name(mess):
     bot.send_message(mess.chat.id, f'Имя успешно изменено на {user.name}.')
 
 
+@bot.message_handler(commands=['new_game'])
+def new_game(mess):
+    db_sess = db_session.create_session()
+    user = db_sess.query(User).filter(User.id == mess.chat.id).first()
+    if not user.room:
+        room = Room(
+            players_count=1
+        )
+        db_sess.add(room)
+        db_sess.commit()
+        user.room = room.id
+        db_sess.commit()
+        bot.send_message(mess.chat.id, f'Комната успешно создана! Id: {room.id}. Чтобы выйти введите "/exit".')
+    else:
+        bot.send_message(mess.chat.id, 'Вы уже находитесь в команте. Чтобы выйти введите "/exit".')
+
+
+@bot.message_handler(commands=['exit'])
+def exit(mess):
+    db_sess = db_session.create_session()
+    user = db_sess.query(User).filter(User.id == mess.chat.id).first()
+    if not user.room:
+        bot.send_message(mess.chat.id, f'Вы не находитесь в комнате.')
+    else:
+        room = db_sess.query(Room).filter(Room.id == user.room).first()
+        user.room = None
+        room.players_count -= 1
+        db_sess.commit()
+        if room.players_count == 0:
+            db_sess.delete(room)
+        db_sess.commit()
+        bot.send_message(mess.chat.id, 'Вы вышли из комнаты.')
+
+
 def main():
     db_session.global_init('db/pocker.db')
+    print('Бот запущен')
 
 
 if __name__ == '__main__':

@@ -11,10 +11,14 @@ cards = ['2♠', '3♠', '4♠', '5♠', '6♠', '7♠', '8♠', '9♠', '10♠'
          '2♥', '3♥', '4♥', '5♥', '6♥', '7♥', '8♥', '9♥', '10♥', 'J♥', 'Q♥', 'K♥', 'A♥',
          '2♣', '3♣', '4♣', '5♣', '6♣', '7♣', '8♣', '9♣', '10♣', 'J♣', 'Q♣', 'K♣', 'A♣',
          '2♦', '3♦', '4♦', '5♦', '6♦', '7♦', '8♦', '9♦', '10♦', 'J♦', 'Q♦', 'K♦', 'A♦']
-per_cards = cards.copy()
 help_list = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K']
 help_l_combo = ['Hight Card', 'Pair', 'Two Pair', 'Three of a Kind', 'Straight', 'Flush', 'Full House',
                 'Four of a Kind', 'Straight Flush', 'Royal Flush']
+
+settings = {
+    'cash': 1000,
+    'min_pot': 50
+}
 
 
 @bot.message_handler(commands=['start'])
@@ -75,11 +79,11 @@ def join(mess):
     user = db_sess.query(User).filter(User.id == mess.chat.id).first()
     if not user.room:
         room.players_count += 1
-        user.room = room_id
         for player in db_sess.query(User).filter(User.room == room_id).all():
             bot.send_message(player.id, f'К комнате присоединился {user.name}! Чтобы начать игру введите "/start_game"')
+        user.room = room_id
         db_sess.commit()
-        bot.send_message(mess.chat.id, 'Вы успешно присоединились к комнате!')
+        bot.send_message(mess.chat.id, 'Вы успешно присоединились к комнате! Чтобы выйти введите "/exit".')
     else:
         bot.send_message(mess.chat.id, 'Вы уже находитесь в команте. Чтобы выйти введите "/exit".')
 
@@ -98,7 +102,35 @@ def exit(mess):
         if room.players_count == 0:
             db_sess.delete(room)
         db_sess.commit()
+        user.clear()
+        room.clear()
+        db_sess.commit()
         bot.send_message(mess.chat.id, 'Вы вышли из комнаты.')
+
+
+@bot.message_handler(commands=['start_game'])
+def start_game(mess):
+    db_sess = db_session.create_session()
+    user = db_sess.query(User).filter(User.id == mess.chat.id).first()
+    if user.room:
+        room = db_sess.query(Room).filter(user.room == Room.id).first()
+        if room.players_count > 1:
+            players = db_sess.query(User).filter(User.room == user.room).all()
+            per_cards = cards.copy()
+
+            for p in players:
+                p.init(settings, per_cards)
+                bot.send_message(p.id, f'Ваша колода: {p.card1} | {p.card2}')
+                db_sess.commit()
+
+            room.init(per_cards)
+            db_sess.commit()
+            for p in players:
+                bot.send_message(p.id, f'Колода на столе: {room.card1} | {room.card2} | {room.card3}')
+        else:
+            bot.send_message(mess.chat.id, 'В комнате недостаточно человек!')
+    else:
+        bot.send_message(mess.chat.id, 'Вы не находитесь в комнате')
 
 
 def main():

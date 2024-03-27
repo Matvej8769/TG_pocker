@@ -128,10 +128,82 @@ def start_game(mess):
             db_sess.commit()
             for p in players:
                 bot.send_message(p.id, f'Колода на столе: {room.card1} | {room.card2} | {room.card3}')
+
+            players.sort(key=lambda x: x.id)
+            player = players[room.step]
+            room.flag_bet = True
+            room.bet = settings['min_pot']
+            db_sess.commit()
+            bot.send_message(player.id, f'Ваш ход! Текущая ставка: {room.bet}.\n'
+                                        f'Выберете действие: /call /fold.\n'
+                                        f'Для расширеной подсказки введите /help.')
         else:
             bot.send_message(mess.chat.id, 'В комнате недостаточно человек!')
     else:
         bot.send_message(mess.chat.id, 'Вы не находитесь в комнате')
+
+
+@bot.message_handler(commands=['call'])
+def call(mess):
+    db_sess = db_session.create_session()
+    user = db_sess.query(User).filter(User.id == mess.chat.id).first()
+    if user.room:
+        room = db_sess.query(Room).filter(user.room == Room.id).first()
+        if room.flag_bet:
+            players = db_sess.query(User).filter(User.room == user.room).all()
+            players.sort(key=lambda x: x.id)
+            player = players[room.step]
+            if player.id == user.id:
+                if player.cash >= room.bet:
+                    player.pot += room.bet
+                    player.cash -= room.bet
+                    room.pot += room.bet
+                    db_sess.commit()
+                    bot.send_message(player.id, 'Вы приняли ставку.')
+                    for p in players:
+                        if p.id != player.id:
+                            bot.send_message(p.id, f'Игрок {player.name} принимает ставку.')
+                    room.step = (room.step + 1) % room.players_count
+                    db_sess.commit()
+                    while players[room.step].is_fold:
+                        room.step = (room.step + 1) % room.players_count
+                        db_sess.commit()
+                    if room.step == room.first_step and not room.card5:
+                        room.first_step = (room.first_step + 1) % room.players_count
+                        db_sess.commit()
+                        room.step = room.first_step
+                        per_cards = cards.copy()
+                        for c in room.get_cards():
+                            del per_cards[per_cards.index(c)]
+                        for p in players:
+                            for c in p.get_hand():
+                                del per_cards[per_cards.index(c)]
+                        room.give_card(per_cards)
+                        db_sess.commit()
+                        for p in players:
+                            bot.send_message(p.id, f'Колода на столе: {" | ".join(room.get_cards())}\n')
+                    elif room.step == room.first_step and room.card5:
+                        room.finish()
+                        return
+                    if player.pot == players[room.step].pot:
+                        room.flag_bet = False
+                        room.bet = 0
+                        db_sess.commit()
+                        bot.send_message(players[room.step].id, 'Ваш ход! Выберете действие: /check /fold /bet.\n'
+                                                                'Для расширеной подсказки введите /help.')
+                    else:
+                        bot.send_message(players[room.step].id, f'Ваш ход! Текущая ставка: {room.bet}.\n'
+                                                                f'Выберете действие: /call /fold.\n'
+                                                                f'Для расширеной подсказки введите /help.')
+                else:
+                    bot.send_message(mess.chat.id, 'У вас недостаточно средств, чтобы принять ставку! '
+                                                   'Введите /fold чтобы сбросить карты.')
+            else:
+                bot.send_message(mess.chat.id, 'Сейчас не ваш ход!')
+        else:
+            bot.send_message(mess.chat.id, 'Сейчас не идёт повышение ставки.')
+    else:
+        bot.send_message(mess.chat.id, 'Вы не находитесь в игре.')
 
 
 @bot.message_handler(commands=['info'])
@@ -150,7 +222,6 @@ def info(mess):
                                        f'Общий банк на столе: {room.pot}')
     else:
         bot.send_message(mess.chat.id, 'Вы не находитесь в комнате или игра ещё не началась.')
-
 
 
 def main():

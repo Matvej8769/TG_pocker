@@ -15,6 +15,7 @@ class Room(SqlAlchemyBase):
     card5 = sqlalchemy.Column(sqlalchemy.String, nullable=True)
     pot = sqlalchemy.Column(sqlalchemy.Integer, nullable=True)
     step = sqlalchemy.Column(sqlalchemy.Integer, nullable=True)
+    first_step = sqlalchemy.Column(sqlalchemy.Integer, nullable=True)
     bet = sqlalchemy.Column(sqlalchemy.Integer, nullable=True)
     flag_bet = sqlalchemy.Column(sqlalchemy.Boolean, nullable=True)
 
@@ -31,7 +32,10 @@ class Room(SqlAlchemyBase):
         self.card3 = random.choice(per_cards)
         del per_cards[per_cards.index(self.card3)]
         self.step = 0
+        self.first_step = 0
         self.flag_bet = False
+        self.bet = 0
+        self.pot = 0
 
     def get_cards(self):
         if self.card1:
@@ -42,3 +46,14 @@ class Room(SqlAlchemyBase):
                 cards.append(self.card5)
             return cards
         return []
+
+    def give_card(self, per_cards):
+        if not self.card4:
+            self.card4 = random.choice(per_cards)
+            del per_cards[per_cards.index(self.card4)]
+        elif not self.card5:
+            self.card5 = random.choice(per_cards)
+            del per_cards[per_cards.index(self.card5)]
+
+    def finish(self):
+        pass

@@ -39,6 +39,11 @@ class User(SqlAlchemyBase):
         self.card2 = random.choice(per_cards)
         del per_cards[per_cards.index(self.card2)]
 
+    def get_hand(self):
+        if self.card1:
+            return [self.card1, self.card2]
+        return []
+
     def check_combo(self, room):
         per_hand = room.get_cards() + [self.card1, self.card2]
         per_numbs, per_nominal = [], []

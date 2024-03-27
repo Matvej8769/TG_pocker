@@ -60,6 +60,30 @@ def new_game(mess):
         bot.send_message(mess.chat.id, 'Вы уже находитесь в команте. Чтобы выйти введите "/exit".')
 
 
+@bot.message_handler(commands=['join'])
+def join(mess):
+    try:
+        room_id = int(mess.text.split()[1])
+    except Exception:
+        bot.send_message(mess.chat.id, 'Введена неправильная команда. ID не является числом.')
+        return
+    db_sess = db_session.create_session()
+    room = db_sess.query(Room).filter(Room.id == room_id).first()
+    if not room:
+        bot.send_message(mess.chat.id, f'Комната с id {room_id} не найдена.')
+        return
+    user = db_sess.query(User).filter(User.id == mess.chat.id).first()
+    if not user.room:
+        room.players_count += 1
+        user.room = room_id
+        for player in db_sess.query(User).filter(User.room == room_id).all():
+            bot.send_message(player.id, f'К комнате присоединился {user.name}! Чтобы начать игру введите "/start_game"')
+        db_sess.commit()
+        bot.send_message(mess.chat.id, 'Вы успешно присоединились к комнате!')
+    else:
+        bot.send_message(mess.chat.id, 'Вы уже находитесь в команте. Чтобы выйти введите "/exit".')
+
+
 @bot.message_handler(commands=['exit'])
 def exit(mess):
     db_sess = db_session.create_session()
@@ -68,7 +92,7 @@ def exit(mess):
         bot.send_message(mess.chat.id, f'Вы не находитесь в комнате.')
     else:
         room = db_sess.query(Room).filter(Room.id == user.room).first()
-        user.room = None
+        user.room = 0
         room.players_count -= 1
         db_sess.commit()
         if room.players_count == 0:

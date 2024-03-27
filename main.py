@@ -71,7 +71,7 @@ def next_step(db_sess, room, players, flag1=False):
 
 @bot.message_handler(commands=['start'])
 def start(mess):
-    bot.send_message(mess.chat.id, 'Добро пожаловать в TgPocker! Версия игры: beta 0.2')
+    bot.send_message(mess.chat.id, 'Добро пожаловать в TgPocker! Версия игры: beta 0.2.1')
     db_sess = db_session.create_session()
     if not db_sess.query(User).filter(User.id == mess.chat.id).first():
         user = User(
@@ -369,6 +369,21 @@ def info(mess):
                                        f'Общий банк на столе: {room.pot}')
     else:
         bot.send_message(mess.chat.id, 'Вы не находитесь в комнате или игра ещё не началась.')
+
+
+@bot.message_handler(commands=['help'])
+def help(mess):
+    bot.send_message(mess.chat.id, 'Список действий:\n'
+                                   'Если происходит повышение ставки, то у вас есть 2 выбора: /call и /fold.\n'
+                                   '/call - принять повышение ставки. У вас с игрового счёта отнимиться сумма, равная '
+                                   'текущей ставке.\n'
+                                   '/fold - сбросить карты. Сбрасывая карты вы отказываетесь от выигрыша, даже если '
+                                   'у вас лучшая коомбинация карт.\n'
+                                   'Если не роисходит повышение ставки, то у вас 3 выбора: /check /fold и /bet <число>.'
+                                   '\n/check - ничего не происходит. Вы просто пропускаете ход.\n'
+                                   '/bet <число> - вы повышаете ставку на <число> очков.\n'
+                                   'Полные правила покера, распределение коомбинаций и т.д. можно почитать тут:\n'
+                                   'https://minigames.mail.ru/info/article/pravila_pokera')
 
 
 def main():

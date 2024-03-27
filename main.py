@@ -21,6 +21,49 @@ settings = {
 }
 
 
+def next_step(db_sess, room, players, player, flag=False):
+    room.step = (room.step + 1) % room.players_count
+    db_sess.commit()
+    while players[room.step].is_fold:
+        room.step = (room.step + 1) % room.players_count
+        db_sess.commit()
+    if room.step == room.first_step and not room.card5 and not flag:
+        room.first_step = (room.first_step + 1) % room.players_count
+        db_sess.commit()
+        while players[room.first_step].is_fold:
+            room.first_step = (room.first_step + 1) % room.players_count
+            db_sess.commit()
+        room.step = room.first_step
+        per_cards = cards.copy()
+        for c in room.get_cards():
+            del per_cards[per_cards.index(c)]
+        for p in players:
+            for c in p.get_hand():
+                del per_cards[per_cards.index(c)]
+        room.give_card(per_cards)
+        db_sess.commit()
+        for p in players:
+            bot.send_message(p.id, f'Колода на столе: {" | ".join(room.get_cards())}\n')
+        flag = True
+    elif room.step == room.first_step and room.card5 and not flag:
+        room.finish()
+        flag = False
+    else:
+        flag = True
+    if flag:
+        if (player.pot == players[room.step].pot and not player.is_fold) or \
+                (player.pot != players[room.step].pot and player.is_fold) or not room.flag_bet:
+            room.flag_bet = False
+            room.bet = 0
+            db_sess.commit()
+            bot.send_message(players[room.step].id, 'Ваш ход! Выберете действие: /check /fold /bet.\n'
+                                                    'Для расширеной подсказки введите /help.')
+        else:
+            bot.send_message(players[room.step].id, f'Ваш ход! Текущая ставка: {room.bet}.\n'
+                                                    f'Выберете действие: /call /fold.\n'
+                                                    f'Для расширеной подсказки введите /help.')
+
+
 @bot.message_handler(commands=['start'])
 def start(mess):
     bot.send_message(mess.chat.id, 'Добро пожаловать в TgPocker! Версия игры: 0.0')
@@ -163,38 +206,7 @@ def call(mess):
                     for p in players:
                         if p.id != player.id:
                             bot.send_message(p.id, f'Игрок {player.name} принимает ставку.')
-                    room.step = (room.step + 1) % room.players_count
-                    db_sess.commit()
-                    while players[room.step].is_fold:
-                        room.step = (room.step + 1) % room.players_count
-                        db_sess.commit()
-                    if room.step == room.first_step and not room.card5:
-                        room.first_step = (room.first_step + 1) % room.players_count
-                        db_sess.commit()
-                        room.step = room.first_step
-                        per_cards = cards.copy()
-                        for c in room.get_cards():
-                            del per_cards[per_cards.index(c)]
-                        for p in players:
-                            for c in p.get_hand():
-                                del per_cards[per_cards.index(c)]
-                        room.give_card(per_cards)
-                        db_sess.commit()
-                        for p in players:
-                            bot.send_message(p.id, f'Колода на столе: {" | ".join(room.get_cards())}\n')
-                    elif room.step == room.first_step and room.card5:
-                        room.finish()
-                        return
-                    if player.pot == players[room.step].pot:
-                        room.flag_bet = False
-                        room.bet = 0
-                        db_sess.commit()
-                        bot.send_message(players[room.step].id, 'Ваш ход! Выберете действие: /check /fold /bet.\n'
-                                                                'Для расширеной подсказки введите /help.')
-                    else:
-                        bot.send_message(players[room.step].id, f'Ваш ход! Текущая ставка: {room.bet}.\n'
-                                                                f'Выберете действие: /call /fold.\n'
-                                                                f'Для расширеной подсказки введите /help.')
+                    next_step(db_sess, room, players, player)
                 else:
                     bot.send_message(mess.chat.id, 'У вас недостаточно средств, чтобы принять ставку! '
                                                    'Введите /fold чтобы сбросить карты.')
@@ -202,6 +214,56 @@ def call(mess):
                 bot.send_message(mess.chat.id, 'Сейчас не ваш ход!')
         else:
             bot.send_message(mess.chat.id, 'Сейчас не идёт повышение ставки.')
+    else:
+        bot.send_message(mess.chat.id, 'Вы не находитесь в игре.')
+
+
+@bot.message_handler(commands=['fold'])
+def fold(mess):
+    db_sess = db_session.create_session()
+    user = db_sess.query(User).filter(User.id == mess.chat.id).first()
+    if user.room:
+        room = db_sess.query(Room).filter(user.room == Room.id).first()
+        players = db_sess.query(User).filter(User.room == user.room).all()
+        players.sort(key=lambda x: x.id)
+        player = players[room.step]
+        if player.id == user.id:
+            player.is_fold = True
+            db_sess.commit()
+            bot.send_message(player.id, 'Вы сбросили карты.')
+            for p in players:
+                if p.id != player.id:
+                    bot.send_message(p.id, f'Игрок {player.name} сбрасывает карты.')
+            flag = True
+            for p in players:
+                if not p.is_fold:
+                    flag = False
+                    break
+            if flag:
+                while not room.card5:
+                    per_cards = cards.copy()
+                    for c in room.get_cards():
+                        del per_cards[per_cards.index(c)]
+                    for p in players:
+                        for c in p.get_hand():
+                            del per_cards[per_cards.index(c)]
+                    room.give_card(per_cards)
+                    db_sess.commit()
+                for p in players:
+                    bot.send_message(p.id, f'Все игроки сбросили карты!')
+                room.finish()
+            else:
+                if room.first_step == room.step:
+                    room.first_step = (room.first_step + 1) % room.players_count
+                    db_sess.commit()
+                    while players[room.first_step].is_fold:
+                        room.first_step = (room.first_step + 1) % room.players_count
+                        db_sess.commit()
+                    next_step(db_sess, room, players, player, True)
+                else:
+                    next_step(db_sess, room, players, player)
+        else:
+            bot.send_message(mess.chat.id, 'Сейчас не ваш ход!')
     else:
         bot.send_message(mess.chat.id, 'Вы не находитесь в игре.')
 

@@ -21,13 +21,16 @@ settings = {
 }
 
 
-def next_step(db_sess, room, players, player, flag=False):
+def next_step(db_sess, room, players, flag1=False):
     room.step = (room.step + 1) % room.players_count
     db_sess.commit()
-    while players[room.step].is_fold:
+    bets = []
+    for p in players:
+        bets.append(p.is_bet or p.is_fold)
+    while players[room.step].is_fold or (room.flag_bet and players[room.step].is_bet and not all(bets)):
         room.step = (room.step + 1) % room.players_count
         db_sess.commit()
-    if room.step == room.first_step and not room.card5 and not flag:
+    if room.step == room.first_step and not room.card5 and not flag1:
         room.first_step = (room.first_step + 1) % room.players_count
         db_sess.commit()
         while players[room.first_step].is_fold:
@@ -44,16 +47,18 @@ def next_step(db_sess, room, players, player, flag=False):
         db_sess.commit()
         for p in players:
             bot.send_message(p.id, f'Колода на столе: {" | ".join(room.get_cards())}\n')
-        flag = True
-    elif room.step == room.first_step and room.card5 and not flag:
+        flag2 = True
+    elif room.step == room.first_step and room.card5 and not flag1 and (not room.flag_bet or all(bets)):
         room.finish(players, bot, db_sess, room)
-        flag = False
+        flag2 = False
     else:
-        flag = True
-    if flag:
-        if (player.pot == players[room.step].pot and not player.is_fold) or \
-                (player.pot != players[room.step].pot and player.is_fold) or not room.flag_bet:
+        flag2 = True
+    if flag2:
+        if all(bets) or not room.flag_bet:
             room.flag_bet = False
+            for p in players:
+                p.is_bet = False
+                db_sess.commit()
             room.bet = 0
             db_sess.commit()
             bot.send_message(players[room.step].id, 'Ваш ход! Выберете действие: /check /fold /bet <ставка>.\n'
@@ -66,7 +71,7 @@ def next_step(db_sess, room, players, player, flag=False):
 
 @bot.message_handler(commands=['start'])
 def start(mess):
-    bot.send_message(mess.chat.id, 'Добро пожаловать в TgPocker! Версия игры: beta 0.1')
+    bot.send_message(mess.chat.id, 'Добро пожаловать в TgPocker! Версия игры: beta 0.2')
     db_sess = db_session.create_session()
     if not db_sess.query(User).filter(User.id == mess.chat.id).first():
         user = User(
@@ -85,7 +90,11 @@ def start(mess):
 def set_name(mess):
     db_sess = db_session.create_session()
     user = db_sess.query(User).filter(User.id == mess.chat.id).first()
-    user.name = mess.text.split()[1]
+    try:
+        user.name = mess.text.split()[1]
+    except Exception:
+        bot.send_message(mess.chat.id, 'Команда введена неправильно! Отсутствует имя пользователя.')
+        return
     db_sess.commit()
     bot.send_message(mess.chat.id, f'Имя успешно изменено на {user.name}.')
 
@@ -118,6 +127,9 @@ def join(mess):
     room = db_sess.query(Room).filter(Room.id == room_id).first()
     if not room:
         bot.send_message(mess.chat.id, f'Комната с id {room_id} не найдена.')
+        return
+    if room.is_game_started:
+        bot.send_message(mess.chat.id, f'В комнате уже идёт игра.')
         return
     user = db_sess.query(User).filter(User.id == mess.chat.id).first()
     if not user.room:
@@ -157,14 +169,17 @@ def start_game(mess):
     user = db_sess.query(User).filter(User.id == mess.chat.id).first()
     if user.room:
         room = db_sess.query(Room).filter(user.room == Room.id).first()
-        if room.players_count >= 1:
+        if room.players_count > 1:
             if not room.is_game_started:
                 bot.send_message(mess.chat.id, 'Игра запускается...')
                 players = db_sess.query(User).filter(User.room == user.room).all()
                 per_cards = cards.copy()
 
                 for p in players:
-                    p.init(settings, per_cards)
+                    if room.is_first_game:
+                        p.init(settings, per_cards)
+                    else:
+                        p.give_hand(per_cards)
                     bot.send_message(p.id, f'Ваша колода: {p.card1} | {p.card2}')
                     db_sess.commit()
 
@@ -204,12 +219,13 @@ def call(mess):
                     player.pot += room.bet
                     player.cash -= room.bet
                     room.pot += room.bet
+                    player.is_bet = True
                     db_sess.commit()
                     bot.send_message(player.id, 'Вы приняли ставку.')
                     for p in players:
                         if p.id != player.id:
                             bot.send_message(p.id, f'Игрок {player.name} принимает ставку.')
-                    next_step(db_sess, room, players, player)
+                    next_step(db_sess, room, players)
                 else:
                     bot.send_message(mess.chat.id, 'У вас недостаточно средств, чтобы принять ставку! '
                                                    'Введите /fold чтобы сбросить карты.')
@@ -262,9 +278,9 @@ def fold(mess):
                     while players[room.first_step].is_fold:
                         room.first_step = (room.first_step + 1) % room.players_count
                         db_sess.commit()
-                    next_step(db_sess, room, players, player, True)
+                    next_step(db_sess, room, players, True)
                 else:
-                    next_step(db_sess, room, players, player)
+                    next_step(db_sess, room, players)
         else:
             bot.send_message(mess.chat.id, 'Сейчас не ваш ход!')
     else:
@@ -286,7 +302,7 @@ def check(mess):
                 for p in players:
                     if p.id != player.id:
                         bot.send_message(p.id, f'Игрок {player.name} пропускает ход.')
-                next_step(db_sess, room, players, player)
+                next_step(db_sess, room, players)
             else:
                 bot.send_message(mess.chat.id, 'Сейчас идёт повышение ставки.')
         else:
@@ -311,18 +327,20 @@ def bet(mess):
                 except Exception:
                     bot.send_message(mess.chat.id, 'Введена неправильная команда. Ставка не является числом.')
                     return
-                if player.cash >= bet_:
+                if player.cash >= bet_ > 0:
                     room.bet = bet_
                     room.flag_bet = True
                     player.pot += bet_
                     player.cash -= bet_
                     room.pot += bet_
+                    player.is_bet = True
+                    room.first_step = players.index(player)
                     db_sess.commit()
                     bot.send_message(player.id, f'Вы повышаете ставку на {bet_}.')
                     for p in players:
                         if p.id != player.id:
                             bot.send_message(p.id, f'Игрок {player.name} повышает ставку на {bet_}.')
-                    next_step(db_sess, room, players, player)
+                    next_step(db_sess, room, players)
                 else:
                     bot.send_message(mess.chat.id, f'У вас недостаточно средств, для повышения ставки на {bet_}. '
                                                    f'Попробуйте ввести меньшую сумму. Введите /info чтобы узнать свой '

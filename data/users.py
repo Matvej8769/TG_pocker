@@ -21,6 +21,7 @@ class User(SqlAlchemyBase):
     cash = sqlalchemy.Column(sqlalchemy.Integer, nullable=True)
     pot = sqlalchemy.Column(sqlalchemy.Integer, nullable=True)
     is_fold = sqlalchemy.Column(sqlalchemy.Boolean, nullable=True)
+    is_bet = sqlalchemy.Column(sqlalchemy.Boolean, nullable=True)
 
     def clear(self):
         self.card1, self.card2, self.combo, self.chance = None, None, None, None

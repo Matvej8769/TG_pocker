@@ -46,7 +46,7 @@ def next_step(db_sess, room, players, player, flag=False):
             bot.send_message(p.id, f'Колода на столе: {" | ".join(room.get_cards())}\n')
         flag = True
     elif room.step == room.first_step and room.card5 and not flag:
-        room.finish()
+        room.finish(players, bot, db_sess, room)
         flag = False
     else:
         flag = True
@@ -66,7 +66,7 @@ def next_step(db_sess, room, players, player, flag=False):
 
 @bot.message_handler(commands=['start'])
 def start(mess):
-    bot.send_message(mess.chat.id, 'Добро пожаловать в TgPocker! Версия игры: 0.0')
+    bot.send_message(mess.chat.id, 'Добро пожаловать в TgPocker! Версия игры: beta 0.1')
     db_sess = db_session.create_session()
     if not db_sess.query(User).filter(User.id == mess.chat.id).first():
         user = User(
@@ -158,28 +158,31 @@ def start_game(mess):
     if user.room:
         room = db_sess.query(Room).filter(user.room == Room.id).first()
         if room.players_count >= 1:
-            bot.send_message(mess.chat.id, 'Игра запускается...')
-            players = db_sess.query(User).filter(User.room == user.room).all()
-            per_cards = cards.copy()
+            if not room.is_game_started:
+                bot.send_message(mess.chat.id, 'Игра запускается...')
+                players = db_sess.query(User).filter(User.room == user.room).all()
+                per_cards = cards.copy()
 
-            for p in players:
-                p.init(settings, per_cards)
-                bot.send_message(p.id, f'Ваша колода: {p.card1} | {p.card2}')
+                for p in players:
+                    p.init(settings, per_cards)
+                    bot.send_message(p.id, f'Ваша колода: {p.card1} | {p.card2}')
+                    db_sess.commit()
+
+                room.init(per_cards)
                 db_sess.commit()
+                for p in players:
+                    bot.send_message(p.id, f'Колода на столе: {room.card1} | {room.card2} | {room.card3}')
 
-            room.init(per_cards)
-            db_sess.commit()
-            for p in players:
-                bot.send_message(p.id, f'Колода на столе: {room.card1} | {room.card2} | {room.card3}')
-
-            players.sort(key=lambda x: x.id)
-            player = players[room.step]
-            room.flag_bet = True
-            room.bet = settings['min_pot']
-            db_sess.commit()
-            bot.send_message(player.id, f'Ваш ход! Текущая ставка: {room.bet}.\n'
-                                        f'Выберете действие: /call /fold.\n'
-                                        f'Для расширеной подсказки введите /help.')
+                players.sort(key=lambda x: x.id)
+                player = players[room.step]
+                room.flag_bet = True
+                room.bet = settings['min_pot']
+                db_sess.commit()
+                bot.send_message(player.id, f'Ваш ход! Текущая ставка: {room.bet}.\n'
+                                            f'Выберете действие: /call /fold.\n'
+                                            f'Для расширеной подсказки введите /help.')
+            else:
+                bot.send_message(mess.chat.id, 'Игра уже запущена.')
         else:
             bot.send_message(mess.chat.id, 'В комнате недостаточно человек!')
     else:
@@ -251,7 +254,7 @@ def fold(mess):
                     db_sess.commit()
                 for p in players:
                     bot.send_message(p.id, f'Все игроки сбросили карты!')
-                room.finish()
+                room.finish(players, bot, db_sess, room)
             else:
                 if room.first_step == room.step:
                     room.first_step = (room.first_step + 1) % room.players_count

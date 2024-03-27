@@ -1,6 +1,12 @@
 import sqlalchemy
 import random
 from .db_session import SqlAlchemyBase
+from .users import User
+
+
+help_list = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K']
+help_l_combo = ['Hight Card', 'Pair', 'Two Pair', 'Three of a Kind', 'Straight', 'Flush', 'Full House',
+                'Four of a Kind', 'Straight Flush', 'Royal Flush']
 
 
 class Room(SqlAlchemyBase):
@@ -18,6 +24,8 @@ class Room(SqlAlchemyBase):
     first_step = sqlalchemy.Column(sqlalchemy.Integer, nullable=True)
     bet = sqlalchemy.Column(sqlalchemy.Integer, nullable=True)
     flag_bet = sqlalchemy.Column(sqlalchemy.Boolean, nullable=True)
+    is_first_game = sqlalchemy.Column(sqlalchemy.Boolean, default=True)
+    is_game_started = sqlalchemy.Column(sqlalchemy.Boolean, default=False)
 
     def clear(self):
         self.card1, self.card2, self.card3, self.card4, self.card5 = None, None, None, None, None
@@ -34,6 +42,7 @@ class Room(SqlAlchemyBase):
         self.step = 0
         self.first_step = 0
         self.flag_bet = False
+        self.is_game_started = True
         self.bet = 0
         self.pot = 0
 
@@ -55,5 +64,28 @@ class Room(SqlAlchemyBase):
             self.card5 = random.choice(per_cards)
             del per_cards[per_cards.index(self.card5)]
 
-    def finish(self):
-        pass
+    def finish(self, players, bot, db_sess, room):
+        for p in players:
+            bot.send_message(p.id, 'Игра окончена, проводим подстчёт результатов...')
+        combs = []
+        for p in players:
+            p.check_combo(room)
+            db_sess.commit()
+            combs.append(p.combo)
+        for p in players:
+            for p2 in players:
+                bot.send_message(p2.id, f'Игрок {p.name}:\n'
+                                        f'Коомбинация: {p.combo}.\n'
+                                        f'Вероятность: {p.chance}.')
+        best_combo = max(combs, key=lambda x: help_l_combo.index(x))
+        n = combs.count(best_combo)
+        winners = db_sess.query(User).filter(User.combo == best_combo and User.room == self.id).all()
+        for p in winners:
+            p.cash += self.pot // n
+            for p2 in players:
+                bot.send_message(p2.id, f'Игрок {p.name} победил! Он получает {self.pot // n} от общего выигрыша!')
+        self.is_first_game = False
+        self.is_game_started = False
+        db_sess.commit()
+        for p in players:
+            bot.send_message(p.id, 'Если хотите продолжить игру, введите /start_game.')

@@ -56,7 +56,7 @@ def next_step(db_sess, room, players, player, flag=False):
             room.flag_bet = False
             room.bet = 0
             db_sess.commit()
-            bot.send_message(players[room.step].id, 'Ваш ход! Выберете действие: /check /fold /bet.\n'
+            bot.send_message(players[room.step].id, 'Ваш ход! Выберете действие: /check /fold /bet <ставка>.\n'
                                                     'Для расширеной подсказки введите /help.')
         else:
             bot.send_message(players[room.step].id, f'Ваш ход! Текущая ставка: {room.bet}.\n'
@@ -278,11 +278,54 @@ def check(mess):
         players.sort(key=lambda x: x.id)
         player = players[room.step]
         if player.id == user.id:
-            bot.send_message(player.id, 'Вы пропускаете ход.')
-            for p in players:
-                if p.id != player.id:
-                    bot.send_message(p.id, f'Игрок {player.name} пропускает ход.')
-            next_step(db_sess, room, players, player)
+            if not room.flag_bet:
+                bot.send_message(player.id, 'Вы пропускаете ход.')
+                for p in players:
+                    if p.id != player.id:
+                        bot.send_message(p.id, f'Игрок {player.name} пропускает ход.')
+                next_step(db_sess, room, players, player)
+            else:
+                bot.send_message(mess.chat.id, 'Сейчас идёт повышение ставки.')
+        else:
+            bot.send_message(mess.chat.id, 'Сейчас не ваш ход!')
+    else:
+        bot.send_message(mess.chat.id, 'Вы не находитесь в игре.')
+
+
+@bot.message_handler(commands=['bet'])
+def bet(mess):
+    db_sess = db_session.create_session()
+    user = db_sess.query(User).filter(User.id == mess.chat.id).first()
+    if user.room:
+        room = db_sess.query(Room).filter(user.room == Room.id).first()
+        players = db_sess.query(User).filter(User.room == user.room).all()
+        players.sort(key=lambda x: x.id)
+        player = players[room.step]
+        if player.id == user.id:
+            if not room.flag_bet:
+                try:
+                    bet_ = int(mess.text.split()[1])
+                except Exception:
+                    bot.send_message(mess.chat.id, 'Введена неправильная команда. Ставка не является числом.')
+                    return
+                if player.cash >= bet_:
+                    room.bet = bet_
+                    room.flag_bet = True
+                    player.pot += bet_
+                    player.cash -= bet_
+                    room.pot += bet_
+                    db_sess.commit()
+                    bot.send_message(player.id, f'Вы повышаете ставку на {bet_}.')
+                    for p in players:
+                        if p.id != player.id:
+                            bot.send_message(p.id, f'Игрок {player.name} повышает ставку на {bet_}.')
+                    next_step(db_sess, room, players, player)
+                else:
+                    bot.send_message(mess.chat.id, f'У вас недостаточно средств, для повышения ставки на {bet_}. '
+                                                   f'Попробуйте ввести меньшую сумму. Введите /info чтобы узнать свой '
+                                                   f'банк.')
+            else:
+                bot.send_message(mess.chat.id, 'Сейчас уже идёт повышение ставки.')
         else:
             bot.send_message(mess.chat.id, 'Сейчас не ваш ход!')
     else:

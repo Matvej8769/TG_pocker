@@ -268,6 +268,27 @@ def fold(mess):
         bot.send_message(mess.chat.id, 'Вы не находитесь в игре.')
 
 
+@bot.message_handler(commands=['check'])
+def check(mess):
+    db_sess = db_session.create_session()
+    user = db_sess.query(User).filter(User.id == mess.chat.id).first()
+    if user.room:
+        room = db_sess.query(Room).filter(user.room == Room.id).first()
+        players = db_sess.query(User).filter(User.room == user.room).all()
+        players.sort(key=lambda x: x.id)
+        player = players[room.step]
+        if player.id == user.id:
+            bot.send_message(player.id, 'Вы пропускаете ход.')
+            for p in players:
+                if p.id != player.id:
+                    bot.send_message(p.id, f'Игрок {player.name} пропускает ход.')
+            next_step(db_sess, room, players, player)
+        else:
+            bot.send_message(mess.chat.id, 'Сейчас не ваш ход!')
+    else:
+        bot.send_message(mess.chat.id, 'Вы не находитесь в игре.')
+
+
 @bot.message_handler(commands=['info'])
 def info(mess):
     db_sess = db_session.create_session()

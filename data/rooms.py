@@ -32,3 +32,13 @@ class Room(SqlAlchemyBase):
         del per_cards[per_cards.index(self.card3)]
         self.step = 0
         self.flag_bet = False
+
+    def get_cards(self):
+        if self.card1:
+            cards = [self.card1, self.card2, self.card3]
+            if self.card4:
+                cards.append(self.card4)
+            if self.card5:
+                cards.append(self.card5)
+            return cards
+        return []

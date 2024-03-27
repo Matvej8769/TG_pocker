@@ -114,7 +114,8 @@ def start_game(mess):
     user = db_sess.query(User).filter(User.id == mess.chat.id).first()
     if user.room:
         room = db_sess.query(Room).filter(user.room == Room.id).first()
-        if room.players_count > 1:
+        if room.players_count >= 1:
+            bot.send_message(mess.chat.id, 'Игра запускается...')
             players = db_sess.query(User).filter(User.room == user.room).all()
             per_cards = cards.copy()
 
@@ -131,6 +132,25 @@ def start_game(mess):
             bot.send_message(mess.chat.id, 'В комнате недостаточно человек!')
     else:
         bot.send_message(mess.chat.id, 'Вы не находитесь в комнате')
+
+
+@bot.message_handler(commands=['info'])
+def info(mess):
+    db_sess = db_session.create_session()
+    user = db_sess.query(User).filter(User.id == mess.chat.id).first()
+    if user.card1:
+        room = db_sess.query(Room).filter(user.room == Room.id).first()
+        user.check_combo(room)
+        db_sess.commit()
+        bot.send_message(mess.chat.id, f'Ваша колода: {user.card1} | {user.card2}\n'
+                                       f'Колода на столе: {" | ".join(room.get_cards())}\n'
+                                       f'Ваша коомбинация: {user.combo}! Шанс выпадения: {user.chance}')
+        bot.send_message(mess.chat.id, f'Ваша ставка: {user.pot}\n'
+                                       f'Ваш счёт: {user.cash}\n'
+                                       f'Общий банк на столе: {room.pot}')
+    else:
+        bot.send_message(mess.chat.id, 'Вы не находитесь в комнате или игра ещё не началась.')
+
 
 
 def main():

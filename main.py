@@ -59,16 +59,16 @@ def next_step(db_sess, room, players, flag1=False):
             room.bet = 0
             db_sess.commit()
             bot.send_message(players[room.step].id, 'Ваш ход! Выберете действие: /check /fold /bet <ставка>.\n'
-                                                    'Для расширеной подсказки введите /help.')
+                                                    'Для расширеной подсказки введите /help или /info.')
         else:
             bot.send_message(players[room.step].id, f'Ваш ход! Текущая ставка: {room.bet}.\n'
                                                     f'Выберете действие: /call /fold.\n'
-                                                    f'Для расширеной подсказки введите /help.')
+                                                    f'Для расширеной подсказки введите /help или /info.')
 
 
 @bot.message_handler(commands=['start'])
 def start(mess):
-    bot.send_message(mess.chat.id, 'Добро пожаловать в TgPocker! Версия игры: beta 0.3')
+    bot.send_message(mess.chat.id, 'Добро пожаловать в TgPocker! Версия игры: beta 0.3.1')
     db_sess = db_session.create_session()
     if not db_sess.query(User).filter(User.id == mess.chat.id).first():
         user = User(
@@ -128,6 +128,10 @@ def settings(mess):
                                        'cash - устанавливает начальную сумму денег каждого игрока. По умолчанию 1000.\n'
                                        'min_pot - устанавилвает минимальную ставку в игре. По умолчанию 50.\n'
                                        'max_players - устанавливает максимальное количество игроков в комнате. '
+                                       'По умолчанию 100.\n'
+                                       'chat - устанавливает возможность отправки сообщений. По умолчанию 1. (1 - Да'
+                                       ', 0 - Нет).\n'
+                                       'max_mess_len - устанавливает максимальное количество символов в сообщении. '
                                        'По умолчанию 100.')
         return
     db_sess = db_session.create_session()
@@ -137,18 +141,26 @@ def settings(mess):
         if not room.is_game_started and room.is_first_game:
             try:
                 for com in commands:
-                    if 'cash=' in com:
+                    if 'cash=' in com and int(com[5:]) > 0:
                         room.cash = int(com[5:])
                         db_sess.commit()
                         bot.send_message(mess.chat.id, f'Установлено значение cash: {room.cash}!')
-                    elif 'min_pot=' in com:
+                    elif 'min_pot=' in com and int(com[8:]) > 0:
                         room.min_pot = int(com[8:])
                         db_sess.commit()
                         bot.send_message(mess.chat.id, f'Установлено значение min_pot: {room.min_pot}!')
-                    elif 'max_players=' in com:
+                    elif 'max_players=' in com and int(com[12:]) > 1:
                         room.max_players = int(com[12:])
                         db_sess.commit()
                         bot.send_message(mess.chat.id, f'Установлено значение max_players: {room.max_players}!')
+                    elif 'chat=' in com:
+                        room.enable_chat = bool(int(com[5:]))
+                        db_sess.commit()
+                        bot.send_message(mess.chat.id, f'Установлено значение chat: {room.enable_chat}!')
+                    elif 'max_mess_len=' in com:
+                        room.max_mess_len = int(com[13:])
+                        db_sess.commit()
+                        bot.send_message(mess.chat.id, f'Установлено значение max_mess_len: {room.max_mess_len}!')
             except Exception:
                 bot.send_message(mess.chat.id, 'Команда введена неправильно! Введите: /settings <параметр>=<значение>.'
                                                ' Например: "/settings cash=1000 min_pot=50 max_players=100"')
@@ -243,7 +255,7 @@ def start_game(mess):
                 db_sess.commit()
                 bot.send_message(player.id, f'Ваш ход! Текущая ставка: {room.bet}.\n'
                                             f'Выберете действие: /call /fold.\n'
-                                            f'Для расширеной подсказки введите /help.')
+                                            f'Для расширеной подсказки введите /help или /info.')
             else:
                 bot.send_message(mess.chat.id, 'Игра уже запущена.')
         else:
@@ -441,11 +453,14 @@ def chat(mess):
     user = db_sess.query(User).filter(User.id == mess.chat.id).first()
     if user.room:
         room = db_sess.query(Room).filter(user.room == Room.id).first()
-        text = mess.text
-        if len(text) > 100:
-            text = text[:100]
-        for player in db_sess.query(User).filter(User.room == room.id, User.id != user.id).all():
-            bot.send_message(player.id, f'{user.name}: {text}')
+        if room.enable_chat:
+            text = mess.text
+            if len(text) > room.max_mess_len:
+                text = text[:room.max_mess_len]
+            for player in db_sess.query(User).filter(User.room == room.id, User.id != user.id).all():
+                bot.send_message(player.id, f'{user.name}: {text}')
+        else:
+            bot.send_message(mess.chat.id, 'В этой комнате запрещена отправка сообщений.')
 
 
 def main():

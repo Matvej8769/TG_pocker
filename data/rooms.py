@@ -30,6 +30,8 @@ class Room(SqlAlchemyBase):
     cash = sqlalchemy.Column(sqlalchemy.Integer, default=1000)
     min_pot = sqlalchemy.Column(sqlalchemy.Integer, default=50)
     max_players = sqlalchemy.Column(sqlalchemy.Integer, default=100)
+    enable_chat = sqlalchemy.Column(sqlalchemy.Boolean, default=True)
+    max_mess_len = sqlalchemy.Column(sqlalchemy.Integer, default=100)
 
     def clear(self):
         self.card1, self.card2, self.card3, self.card4, self.card5 = None, None, None, None, None

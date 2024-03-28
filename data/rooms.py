@@ -82,9 +82,9 @@ class Room(SqlAlchemyBase):
                                         f'Коомбинация: {p.combo}.\n'
                                         f'Вероятность: {p.chance}.')
         best_combo = max(combs, key=lambda x: help_l_combo.index(x))
-        n = combs.count(best_combo)
         winners = db_sess.query(User).filter(User.combo == best_combo, User.room == self.id,
                                              User.is_fold == False).all()
+        n = len(winners)
         for p in winners:
             p.cash += self.pot // n
             for p2 in players:

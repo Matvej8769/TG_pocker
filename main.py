@@ -5,7 +5,9 @@ from data import db_session
 from data.users import User
 from data.rooms import Room
 
-bot = telebot.TeleBot('6262493627:AAGhW1QAWBkE1niyqgvtP-exbu_xBTscqVM')
+with open('TOKEN.txt') as f:
+    TOKEN = f.read()
+bot = telebot.TeleBot(TOKEN)
 
 cards = ['2♠', '3♠', '4♠', '5♠', '6♠', '7♠', '8♠', '9♠', '10♠', 'J♠', 'Q♠', 'K♠', 'A♠',
          '2♥', '3♥', '4♥', '5♥', '6♥', '7♥', '8♥', '9♥', '10♥', 'J♥', 'Q♥', 'K♥', 'A♥',
@@ -66,7 +68,7 @@ def next_step(db_sess, room, players, flag1=False):
 
 @bot.message_handler(commands=['start'])
 def start(mess):
-    bot.send_message(mess.chat.id, 'Добро пожаловать в TgPocker! Версия игры: beta 0.2.3')
+    bot.send_message(mess.chat.id, 'Добро пожаловать в TgPocker! Версия игры: beta 0.3')
     db_sess = db_session.create_session()
     if not db_sess.query(User).filter(User.id == mess.chat.id).first():
         user = User(
@@ -90,6 +92,9 @@ def set_name(mess):
     except Exception:
         bot.send_message(mess.chat.id, 'Команда введена неправильно! Отсутствует имя пользователя.')
         return
+    db_sess.commit()
+    if len(user.name) > 20:
+        user.name = user.name[:20]
     db_sess.commit()
     bot.send_message(mess.chat.id, f'Имя успешно изменено на {user.name}.')
 
@@ -422,8 +427,9 @@ def help(mess):
                                    'текущей ставке.\n'
                                    '/fold - сбросить карты. Сбрасывая карты вы отказываетесь от выигрыша, даже если '
                                    'у вас лучшая коомбинация карт.\n'
-                                   'Если не роисходит повышение ставки, то у вас 3 выбора: /check /fold и /bet <число>.'
-                                   '\n/check - ничего не происходит. Вы просто пропускаете ход.\n'
+                                   'Если не происходит повышение ставки, то у вас 3 выбора: /check /fold и /bet <число>'
+                                   '.\n'
+                                   '/check - ничего не происходит. Вы просто пропускаете ход.\n'
                                    '/bet <число> - вы повышаете ставку на <число> очков.\n'
                                    'Полные правила покера, распределение коомбинаций и т.д. можно почитать тут:\n'
                                    'https://minigames.mail.ru/info/article/pravila_pokera')
@@ -435,8 +441,11 @@ def chat(mess):
     user = db_sess.query(User).filter(User.id == mess.chat.id).first()
     if user.room:
         room = db_sess.query(Room).filter(user.room == Room.id).first()
+        text = mess.text
+        if len(text) > 100:
+            text = text[:100]
         for player in db_sess.query(User).filter(User.room == room.id, User.id != user.id).all():
-            bot.send_message(player.id, f'{user.name}: {mess.text}')
+            bot.send_message(player.id, f'{user.name}: {text}')
 
 
 def main():

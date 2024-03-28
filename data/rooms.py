@@ -26,6 +26,10 @@ class Room(SqlAlchemyBase):
     flag_bet = sqlalchemy.Column(sqlalchemy.Boolean, nullable=True)
     is_first_game = sqlalchemy.Column(sqlalchemy.Boolean, default=True)
     is_game_started = sqlalchemy.Column(sqlalchemy.Boolean, default=False)
+    # настройки
+    cash = sqlalchemy.Column(sqlalchemy.Integer, default=1000)
+    min_pot = sqlalchemy.Column(sqlalchemy.Integer, default=50)
+    max_players = sqlalchemy.Column(sqlalchemy.Integer, default=100)
 
     def clear(self):
         self.card1, self.card2, self.card3, self.card4, self.card5 = None, None, None, None, None
@@ -87,6 +91,7 @@ class Room(SqlAlchemyBase):
                 bot.send_message(p2.id, f'Игрок {p.name} победил! Он получает {self.pot // n} от общего выигрыша!')
         self.is_first_game = False
         self.is_game_started = False
+        self.clear()
         db_sess.commit()
         for p in players:
             bot.send_message(p.id, 'Если хотите продолжить игру, введите /start_game.')

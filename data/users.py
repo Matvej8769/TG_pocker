@@ -28,9 +28,9 @@ class User(SqlAlchemyBase):
         self.cash, self.pot = None, None
         self.is_fold = None
 
-    def init(self, settings, per_cards):
+    def init(self, cash, per_cards):
         self.clear()
-        self.cash = settings['cash']
+        self.cash = cash
         self.give_hand(per_cards)
 
     def give_hand(self, per_cards):

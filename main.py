@@ -15,11 +15,6 @@ help_list = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K']
 help_l_combo = ['Hight Card', 'Pair', 'Two Pair', 'Three of a Kind', 'Straight', 'Flush', 'Full House',
                 'Four of a Kind', 'Straight Flush', 'Royal Flush']
 
-settings = {
-    'cash': 1000,
-    'min_pot': 50
-}
-
 
 def next_step(db_sess, room, players, flag1=False):
     room.step = (room.step + 1) % room.players_count
@@ -71,7 +66,7 @@ def next_step(db_sess, room, players, flag1=False):
 
 @bot.message_handler(commands=['start'])
 def start(mess):
-    bot.send_message(mess.chat.id, 'Добро пожаловать в TgPocker! Версия игры: beta 0.2.1')
+    bot.send_message(mess.chat.id, 'Добро пожаловать в TgPocker! Версия игры: beta 0.2.2')
     db_sess = db_session.create_session()
     if not db_sess.query(User).filter(User.id == mess.chat.id).first():
         user = User(
@@ -111,9 +106,51 @@ def new_game(mess):
         db_sess.commit()
         user.room = room.id
         db_sess.commit()
-        bot.send_message(mess.chat.id, f'Комната успешно создана! Id: {room.id}. Чтобы выйти введите "/exit".')
+        bot.send_message(mess.chat.id, f'Комната успешно создана! Id: {room.id}. Чтобы выйти введите "/exit".\n'
+                                       f'Чтобы настроить комнату, введите /settings <параметр>=<значение>')
     else:
         bot.send_message(mess.chat.id, 'Вы уже находитесь в команте. Чтобы выйти введите "/exit".')
+
+
+@bot.message_handler(commands=['settings'])
+def settings(mess):
+    commands = mess.text.split()
+    if len(commands) == 1:
+        bot.send_message(mess.chat.id, 'Помощь по команде /settings:\n'
+                                       'Вид команды: /settings <параметр>=<значение>.\n'
+                                       'Пример: "/settings cash=1000 min_pot=50 max_players=100"\n'
+                                       'Возможные настройки:\n'
+                                       'cash - устанавливает начальную сумму денег каждого игрока. По умолчанию 1000.\n'
+                                       'min_pot - устанавилвает минимальную ставку в игре. По умолчанию 50.\n'
+                                       'max_players - устанавливает максимальное количество игроков в комнате. '
+                                       'По умолчанию 100.')
+        return
+    db_sess = db_session.create_session()
+    user = db_sess.query(User).filter(User.id == mess.chat.id).first()
+    if user.room:
+        room = db_sess.query(Room).filter(user.room == Room.id).first()
+        if not room.is_game_started and room.is_first_game:
+            try:
+                for com in commands:
+                    if 'cash=' in com:
+                        room.cash = int(com[5:])
+                        db_sess.commit()
+                        bot.send_message(mess.chat.id, f'Установлено значение cash: {room.cash}!')
+                    elif 'min_pot=' in com:
+                        room.min_pot = int(com[8:])
+                        db_sess.commit()
+                        bot.send_message(mess.chat.id, f'Установлено значение min_pot: {room.min_pot}!')
+                    elif 'max_players=' in com:
+                        room.max_players = int(com[12:])
+                        db_sess.commit()
+                        bot.send_message(mess.chat.id, f'Установлено значение max_players: {room.max_players}!')
+            except Exception:
+                bot.send_message(mess.chat.id, 'Команда введена неправильно! Введите: /settings <параметр>=<значение>.'
+                                               ' Например: "/settings cash=1000 min_pot=50 max_players=100"')
+        else:
+            bot.send_message(mess.chat.id, 'Игра уже запущена.')
+    else:
+        bot.send_message(mess.chat.id, 'Вы не находитесь в комнате')
 
 
 @bot.message_handler(commands=['join'])
@@ -129,7 +166,10 @@ def join(mess):
         bot.send_message(mess.chat.id, f'Комната с id {room_id} не найдена.')
         return
     if room.is_game_started:
-        bot.send_message(mess.chat.id, f'В комнате уже идёт игра.')
+        bot.send_message(mess.chat.id, 'В комнате уже идёт игра.')
+        return
+    if room.players_count == room.max_players:
+        bot.send_message(mess.chat.id, 'Комната заполнена.')
         return
     user = db_sess.query(User).filter(User.id == mess.chat.id).first()
     if not user.room:
@@ -156,9 +196,10 @@ def exit(mess):
         db_sess.commit()
         if room.players_count == 0:
             db_sess.delete(room)
-        db_sess.commit()
+        else:
+            for player in db_sess.query(User).filter(User.room == room.id).all():
+                bot.send_message(player.id, f'Игрок {user.name} покидает комнату.')
         user.clear()
-        room.clear()
         db_sess.commit()
         bot.send_message(mess.chat.id, 'Вы вышли из комнаты.')
 
@@ -172,12 +213,14 @@ def start_game(mess):
         if room.players_count > 1:
             if not room.is_game_started:
                 bot.send_message(mess.chat.id, 'Игра запускается...')
+                room.is_game_started = True
+                db_sess.commit()
                 players = db_sess.query(User).filter(User.room == user.room).all()
                 per_cards = cards.copy()
 
                 for p in players:
                     if room.is_first_game:
-                        p.init(settings, per_cards)
+                        p.init(room.cash, per_cards)
                     else:
                         p.give_hand(per_cards)
                     bot.send_message(p.id, f'Ваша колода: {p.card1} | {p.card2}')
@@ -191,7 +234,7 @@ def start_game(mess):
                 players.sort(key=lambda x: x.id)
                 player = players[room.step]
                 room.flag_bet = True
-                room.bet = settings['min_pot']
+                room.bet = room.min_pot
                 db_sess.commit()
                 bot.send_message(player.id, f'Ваш ход! Текущая ставка: {room.bet}.\n'
                                             f'Выберете действие: /call /fold.\n'

@@ -5,7 +5,7 @@ from data import db_session
 from data.users import User
 from data.rooms import Room
 
-with open('TOKEN.txt') as f:
+with open('venv/TOKEN.txt') as f:
     TOKEN = f.read()
 bot = telebot.TeleBot(TOKEN)
 

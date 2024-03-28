@@ -66,7 +66,7 @@ def next_step(db_sess, room, players, flag1=False):
 
 @bot.message_handler(commands=['start'])
 def start(mess):
-    bot.send_message(mess.chat.id, 'Добро пожаловать в TgPocker! Версия игры: beta 0.2.2')
+    bot.send_message(mess.chat.id, 'Добро пожаловать в TgPocker! Версия игры: beta 0.2.3')
     db_sess = db_session.create_session()
     if not db_sess.query(User).filter(User.id == mess.chat.id).first():
         user = User(
@@ -427,6 +427,16 @@ def help(mess):
                                    '/bet <число> - вы повышаете ставку на <число> очков.\n'
                                    'Полные правила покера, распределение коомбинаций и т.д. можно почитать тут:\n'
                                    'https://minigames.mail.ru/info/article/pravila_pokera')
+
+
+@bot.message_handler()
+def chat(mess):
+    db_sess = db_session.create_session()
+    user = db_sess.query(User).filter(User.id == mess.chat.id).first()
+    if user.room:
+        room = db_sess.query(Room).filter(user.room == Room.id).first()
+        for player in db_sess.query(User).filter(User.room == room.id, User.id != user.id).all():
+            bot.send_message(player.id, f'{user.name}: {mess.text}')
 
 
 def main():

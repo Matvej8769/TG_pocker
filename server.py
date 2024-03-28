@@ -1,5 +1,4 @@
 import telebot
-import random
 
 from data import db_session
 from data.users import User
@@ -68,7 +67,7 @@ def next_step(db_sess, room, players, flag1=False):
 
 @bot.message_handler(commands=['start'])
 def start(mess):
-    bot.send_message(mess.chat.id, 'Добро пожаловать в TgPocker! Версия игры: beta 0.3.1')
+    bot.send_message(mess.chat.id, 'Добро пожаловать в TgPocker! Версия игры: 1.0')
     db_sess = db_session.create_session()
     if not db_sess.query(User).filter(User.id == mess.chat.id).first():
         user = User(

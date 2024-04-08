@@ -21,6 +21,7 @@ fi
 # Install the requirements
 $VIRTUALENV/bin/pip install telebot
 $VIRTUALENV/bin/pip install sqlalchemy
+$VIRTUALENV/bin/pip install urllib3==1.26.6
 
 # Run your glorious application
 $VIRTUALENV/bin/python3 server.py

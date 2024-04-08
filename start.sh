@@ -19,7 +19,8 @@ if [ ! -f $VIRTUALENV/bin/pip ]; then
 fi
 
 # Install the requirements
-$VIRTUALENV/bin/pip install -r requirements.txt
+$VIRTUALENV/bin/pip install telebot
+$VIRTUALENV/bin/pip install sqlalchemy
 
 # Run your glorious application
 $VIRTUALENV/bin/python3 server.py

@@ -1,3 +1,2 @@
 SQLAlchemy
 telebot
-requests
